@@ -244,7 +244,9 @@ with tab1:
         elif coord_mode == 'BD-09':
             center_lat, center_lng = bd_lat, bd_lng
         
-        m = folium.Map(location=[center_lat, center_lng], zoom_start=18, tiles='http://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}', attr='高德地图', max_zoom=19)
+        m = folium.Map(location=[center_lat, center_lng], zoom_start=18, tiles='OpenStreetMap', attr='OSM', max_zoom=19)
+        folium.TileLayer(tiles='http://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}', attr='高德地图', name='高德地图', max_zoom=19).add_to(m)
+        folium.LayerControl().add_to(m)
         
         gcj_lng_m, gcj_lat_m = wgs84_to_gcj02(wgs_lng, wgs_lat)
         folium.Marker([gcj_lat_m, gcj_lng_m], popup=f'WGS-84: {wgs_lat:.6f}, {wgs_lng:.6f}', icon=folium.Icon(color='blue')).add_to(m)
@@ -301,7 +303,9 @@ with tab2:
         st.download_button('📥 导出障碍物JSON', json_data, file_name='obstacles.json', mime='application/json')
     
     with col1:
-        m = folium.Map(location=[32.2342, 118.7494], zoom_start=18, tiles='http://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}', attr='高德地图', max_zoom=19)
+        m = folium.Map(location=[32.2342, 118.7494], zoom_start=18, tiles='OpenStreetMap', attr='OSM', max_zoom=19)
+        folium.TileLayer(tiles='http://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}', attr='高德地图', name='高德地图', max_zoom=19).add_to(m)
+        folium.LayerControl().add_to(m)
         
         for obs in st.session_state.obstacles:
             folium.Polygon(
