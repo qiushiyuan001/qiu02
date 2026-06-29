@@ -140,8 +140,6 @@ def init_session_state():
         st.session_state.mavlink_messages = []
     if 'path_type' not in st.session_state:
         st.session_state.path_type = '飞越'
-    if 'coord_mode' not in st.session_state:
-        st.session_state.coord_mode = 'WGS-84'
 
 init_session_state()
 
@@ -169,11 +167,16 @@ def update_flight_data():
     fd = st.session_state.flight_data
     
     if fd['alt'] < st.session_state.fly_height:
-        fd['alt'] += 0.5
+        fd['alt'] = min(fd['alt'] + 0.5, st.session_state.fly_height)
+        fd['speed'] = 2.0
+        fd['status'] = '爬升中'
     else:
-        fd['speed'] = 10.0
+        has_path = st.session_state.planned_path and len(st.session_state.planned_path) > 1
         
-        if st.session_state.planned_path and len(st.session_state.planned_path) > 1:
+        if has_path:
+            fd['speed'] = 10.0
+            fd['status'] = '飞行中'
+            
             current_idx = 0
             if 'path_index' in st.session_state:
                 current_idx = st.session_state.path_index
@@ -185,25 +188,34 @@ def update_flight_data():
                 if current_idx < len(st.session_state.planned_path) - 1:
                     st.session_state.path_index = current_idx + 1
                     target_lat, target_lng = st.session_state.planned_path[current_idx + 1]
+                    add_log(f'📍 经过航点 {current_idx + 1}')
                 else:
                     fd['speed'] = 0.0
                     st.session_state.is_flying = False
                     fd['status'] = '已到达'
                     add_log('✈️ 到达目的地')
+                    add_mavlink_message('MISSION', 'Mission complete')
                     return
             
-            direction_lat = (target_lat - fd['lat']) / max(dist_to_target, 0.1) * 0.5
-            direction_lng = (target_lng - fd['lng']) / max(dist_to_target, 0.1) * 0.5
+            step_size = 0.000045
+            direction_lat = (target_lat - fd['lat']) / max(dist_to_target, 0.1) * step_size
+            direction_lng = (target_lng - fd['lng']) / max(dist_to_target, 0.1) * step_size
             fd['lat'] += direction_lat
             fd['lng'] += direction_lng
-            fd['dist'] += 0.5
-        
-        fd['roll'] = random.uniform(-2, 2)
-        fd['pitch'] = random.uniform(-1, 1)
-        fd['yaw'] = (fd['yaw'] + 0.5) % 360
-        fd['voltage'] = max(18.0, fd['voltage'] - 0.01)
-        fd['current'] = random.uniform(8, 12)
-        fd['power'] = max(0, fd['power'] - 0.1)
+            fd['dist'] += calculate_distance(
+                fd['lat'] - direction_lat, fd['lng'] - direction_lng,
+                fd['lat'], fd['lng']
+            )
+        else:
+            fd['speed'] = 0.0
+            fd['status'] = '悬停'
+    
+    fd['roll'] = random.uniform(-2, 2)
+    fd['pitch'] = random.uniform(-1, 1)
+    fd['yaw'] = (fd['yaw'] + 0.5) % 360
+    fd['voltage'] = max(18.0, fd['voltage'] - 0.01)
+    fd['current'] = random.uniform(8, 12)
+    fd['power'] = max(0, fd['power'] - 0.1)
     
     add_mavlink_message('GPS', f"Lat: {fd['lat']:.6f}, Lng: {fd['lng']:.6f}, Alt: {fd['alt']:.1f}m")
     add_mavlink_message('ATTITUDE', f"Roll: {fd['roll']:.1f}°, Pitch: {fd['pitch']:.1f}°, Yaw: {fd['yaw']:.1f}°")
@@ -216,13 +228,16 @@ with tab1:
     
     with col2:
         st.subheader('坐标转换')
-        coord_mode = st.radio('坐标模式', ['WGS-84', 'GCJ-02', 'BD-09'], key='coord_mode')
         
         wgs_lng = st.number_input('WGS-84 经度', value=118.7494, step=0.0001, format='%.6f')
         wgs_lat = st.number_input('WGS-84 纬度', value=32.2342, step=0.0001, format='%.6f')
         
         gcj_lng, gcj_lat = wgs84_to_gcj02(wgs_lng, wgs_lat)
         bd_lng, bd_lat = wgs84_to_bd09(wgs_lng, wgs_lat)
+        
+        st.write(f'**WGS-84 (GPS坐标):**')
+        st.write(f'经度: {wgs_lng:.6f}')
+        st.write(f'纬度: {wgs_lat:.6f}')
         
         st.write(f'**GCJ-02 (火星坐标):**')
         st.write(f'经度: {gcj_lng:.6f}')
@@ -236,22 +251,18 @@ with tab1:
         st.write(f'南京科技职业学院')
         st.write(f'经度: 118°44′58″ E')
         st.write(f'纬度: 32°14′03″ N')
+        st.write(f'坐标系: WGS-84')
     
     with col1:
-        center_lat, center_lng = wgs_lat, wgs_lng
-        if coord_mode == 'GCJ-02':
-            center_lat, center_lng = gcj_lat, gcj_lng
-        elif coord_mode == 'BD-09':
-            center_lat, center_lng = bd_lat, bd_lng
+        m = folium.Map(location=[wgs_lat, wgs_lng], zoom_start=18, tiles='CartoDB positron', attr='CartoDB', max_zoom=19)
         
-        m = folium.Map(location=[center_lat, center_lng], zoom_start=18, tiles='OpenStreetMap', attr='OSM', max_zoom=19)
-        folium.TileLayer(tiles='http://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}', attr='高德地图', name='高德地图', max_zoom=19).add_to(m)
-        folium.LayerControl().add_to(m)
+        folium.Marker(
+            [wgs_lat, wgs_lng],
+            popup=f'WGS-84: {wgs_lat:.6f}, {wgs_lng:.6f}\nGCJ-02: {gcj_lat:.6f}, {gcj_lng:.6f}',
+            icon=folium.Icon(color='blue', icon='info-sign')
+        ).add_to(m)
         
-        gcj_lng_m, gcj_lat_m = wgs84_to_gcj02(wgs_lng, wgs_lat)
-        folium.Marker([gcj_lat_m, gcj_lng_m], popup=f'WGS-84: {wgs_lat:.6f}, {wgs_lng:.6f}', icon=folium.Icon(color='blue')).add_to(m)
-        
-        st.write(f'地图中心点: {center_lat:.6f}, {center_lng:.6f}')
+        st.write(f'地图中心点 (WGS-84): {wgs_lat:.6f}, {wgs_lng:.6f}')
         folium_static(m)
 
 with tab2:
@@ -295,17 +306,17 @@ with tab2:
         for obs in st.session_state.obstacles:
             with st.expander(f"{obs['name']} (高度: {obs['height']}m)"):
                 st.write(f"位置: {obs['points'][0]}")
-                if st.button(f'删除 {obs["name"]}'):
+                if st.button(f'删除 {obs["name"]}', key=f'del_obs_{obs["id"]}'):
                     st.session_state.obstacles = [o for o in st.session_state.obstacles if o['id'] != obs['id']]
-                    st.experimental_rerun()
+                    st.rerun()
         
         json_data = json.dumps(st.session_state.obstacles, ensure_ascii=False, indent=2)
         st.download_button('📥 导出障碍物JSON', json_data, file_name='obstacles.json', mime='application/json')
     
     with col1:
-        m = folium.Map(location=[32.2342, 118.7494], zoom_start=18, tiles='OpenStreetMap', attr='OSM', max_zoom=19)
-        folium.TileLayer(tiles='http://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}', attr='高德地图', name='高德地图', max_zoom=19).add_to(m)
-        folium.LayerControl().add_to(m)
+        center_lat = st.session_state.start_point['lat']
+        center_lng = st.session_state.start_point['lng']
+        m = folium.Map(location=[center_lat, center_lng], zoom_start=18, tiles='CartoDB positron', attr='CartoDB', max_zoom=19)
         
         for obs in st.session_state.obstacles:
             folium.Polygon(
@@ -317,22 +328,33 @@ with tab2:
                 popup=f"{obs['name']} - {obs['height']}m"
             ).add_to(m)
         
-        gcj_start = wgs84_to_gcj02(st.session_state.start_point['lng'], st.session_state.start_point['lat'])
-        gcj_end = wgs84_to_gcj02(st.session_state.end_point['lng'], st.session_state.end_point['lat'])
-        
-        folium.Marker([gcj_start[1], gcj_start[0]], popup='起点', icon=folium.Icon(color='green', icon='play')).add_to(m)
-        folium.Marker([gcj_end[1], gcj_end[0]], popup='终点', icon=folium.Icon(color='red', icon='flag')).add_to(m)
+        folium.Marker(
+            [st.session_state.start_point['lat'], st.session_state.start_point['lng']],
+            popup='起点',
+            icon=folium.Icon(color='green', icon='play')
+        ).add_to(m)
+        folium.Marker(
+            [st.session_state.end_point['lat'], st.session_state.end_point['lng']],
+            popup='终点',
+            icon=folium.Icon(color='red', icon='flag')
+        ).add_to(m)
         
         if st.session_state.planned_path:
-            gcj_path = [(wgs84_to_gcj02(p[1], p[0])[1], wgs84_to_gcj02(p[1], p[0])[0]) for p in st.session_state.planned_path]
             folium.PolyLine(
-                locations=gcj_path,
+                locations=st.session_state.planned_path,
                 color='#3498db',
                 weight=3,
                 popup=f'{st.session_state.path_type}路径'
             ).add_to(m)
             
-            total_dist = sum(calculate_distance(gcj_path[i][0], gcj_path[i][1], gcj_path[i+1][0], gcj_path[i+1][1]) for i in range(len(gcj_path)-1))
+            total_dist = sum(
+                calculate_distance(
+                    st.session_state.planned_path[i][0],
+                    st.session_state.planned_path[i][1],
+                    st.session_state.planned_path[i+1][0],
+                    st.session_state.planned_path[i+1][1]
+                ) for i in range(len(st.session_state.planned_path)-1)
+            )
             st.write(f'**规划路径距离:** {total_dist:.1f}米')
         
         folium_static(m)
@@ -341,13 +363,43 @@ with tab3:
     col1, col2 = st.columns([2, 1])
     
     with col1:
+        st.subheader('实时飞行地图')
+        fd = st.session_state.flight_data
+        m = folium.Map(location=[fd['lat'], fd['lng']], zoom_start=19, tiles='CartoDB positron', attr='CartoDB', max_zoom=19)
+        
+        if st.session_state.planned_path:
+            folium.PolyLine(
+                locations=st.session_state.planned_path,
+                color='#3498db',
+                weight=2,
+                opacity=0.6,
+                popup='规划路径'
+            ).add_to(m)
+        
+        folium.Marker(
+            [fd['lat'], fd['lng']],
+            popup=f"高度: {fd['alt']:.1f}m\n速度: {fd['speed']:.1f}m/s\n状态: {fd['status']}",
+            icon=folium.Icon(color='orange', icon='plane')
+        ).add_to(m)
+        
+        folium.Circle(
+            location=[fd['lat'], fd['lng']],
+            radius=st.session_state.safe_radius,
+            color='orange',
+            fill=True,
+            fill_opacity=0.1,
+            popup=f'安全半径: {st.session_state.safe_radius}m'
+        ).add_to(m)
+        
+        folium_static(m)
+        
         col_a, col_b = st.columns(2)
         
         with col_a:
             st.subheader('姿态数据')
-            roll = st.session_state.flight_data['roll']
-            pitch = st.session_state.flight_data['pitch']
-            yaw = st.session_state.flight_data['yaw']
+            roll = fd['roll']
+            pitch = fd['pitch']
+            yaw = fd['yaw']
             
             st.metric('横滚 (Roll)', f'{roll:.1f}°')
             st.metric('俯仰 (Pitch)', f'{pitch:.1f}°')
@@ -355,9 +407,9 @@ with tab3:
         
         with col_b:
             st.subheader('动力系统')
-            voltage = st.session_state.flight_data['voltage']
-            current = st.session_state.flight_data['current']
-            power = st.session_state.flight_data['power']
+            voltage = fd['voltage']
+            current = fd['current']
+            power = fd['power']
             
             st.metric('电压', f'{voltage:.1f}V')
             st.metric('电流', f'{current:.1f}A')
@@ -367,26 +419,26 @@ with tab3:
         col_pos1, col_pos2, col_pos3 = st.columns(3)
         
         with col_pos1:
-            st.metric('纬度', f"{st.session_state.flight_data['lat']:.6f}")
+            st.metric('纬度', f"{fd['lat']:.6f}")
         
         with col_pos2:
-            st.metric('经度', f"{st.session_state.flight_data['lng']:.6f}")
+            st.metric('经度', f"{fd['lng']:.6f}")
         
         with col_pos3:
-            st.metric('高度', f"{st.session_state.flight_data['alt']:.1f}m")
+            st.metric('高度', f"{fd['alt']:.1f}m")
         
         st.subheader('飞行状态')
         col_status1, col_status2, col_status3 = st.columns(3)
         
         with col_status1:
-            st.metric('飞行速度', f"{st.session_state.flight_data['speed']:.1f}m/s")
+            st.metric('飞行速度', f"{fd['speed']:.1f}m/s")
         
         with col_status2:
-            st.metric('飞行距离', f"{st.session_state.flight_data['dist']:.1f}m")
+            st.metric('飞行距离', f"{fd['dist']:.1f}m")
         
         with col_status3:
-            status_color = 'green' if st.session_state.flight_data['status'] == '飞行中' else 'blue'
-            st.metric('状态', st.session_state.flight_data['status'], delta_color=status_color)
+            status_color = 'green' if fd['status'] == '飞行中' else 'blue'
+            st.metric('状态', fd['status'], delta_color=status_color)
     
     with col2:
         st.subheader('飞行控制')
@@ -398,19 +450,38 @@ with tab3:
                 st.session_state.flight_data['status'] = '飞行中'
                 st.session_state.flight_data['path_index'] = 0
                 add_log('▶ 飞行启动')
+                st.rerun()
         
         with col_btns[1]:
             if st.button('⏸ 暂停', disabled=not st.session_state.is_flying, use_container_width=True):
                 st.session_state.is_flying = False
                 st.session_state.flight_data['status'] = '暂停'
                 add_log('⏸ 飞行暂停')
+                st.rerun()
+        
+        if st.button('🔄 重置飞行', use_container_width=True):
+            st.session_state.is_flying = False
+            st.session_state.flight_data = {
+                'roll': 0.0, 'pitch': 0.0, 'yaw': 0.0,
+                'alt': 0.0, 'speed': 0.0, 'dist': 0.0,
+                'lat': st.session_state.start_point['lat'],
+                'lng': st.session_state.start_point['lng'],
+                'voltage': 24.0, 'current': 10.0, 'power': 100,
+                'status': '待机'
+            }
+            st.session_state.path_index = 0
+            add_log('🔄 飞行重置')
+            st.rerun()
         
         st.subheader('飞行日志')
         log_container = st.container()
         
         with log_container:
-            for log in st.session_state.flight_logs[:10]:
-                st.write(f"[{log['time']}] {log['message']}")
+            if not st.session_state.flight_logs:
+                st.write('暂无日志')
+            else:
+                for log in st.session_state.flight_logs[:10]:
+                    st.write(f"[{log['time']}] {log['message']}")
 
 with tab4:
     col1, col2 = st.columns([1, 2])
@@ -424,7 +495,7 @@ with tab4:
             <text x="100" y="65" text-anchor="middle" fill="white" font-size="14" font-weight="bold">GCS</text>
             <text x="100" y="85" text-anchor="middle" fill="white" font-size="10">地面控制站</text>
             
-            <line x1="100" y1="100" x2="100" y2="140" stroke="#ecf0f1" stroke-width="2" stroke-dasharray="5,5"/>
+            <line x1="100" y1="100" x2="100" y2="140" stroke="#7f8c8d" stroke-width="2" stroke-dasharray="5,5"/>
             <rect x="155" y="110" width="20" height="20" rx="3" fill="#27ae60"/>
             <text x="165" y="125" text-anchor="middle" fill="white" font-size="8">4G</text>
             
@@ -432,16 +503,16 @@ with tab4:
             <text x="100" y="205" text-anchor="middle" fill="white" font-size="14" font-weight="bold">OBC</text>
             <text x="100" y="225" text-anchor="middle" fill="white" font-size="10">机载计算机</text>
             
-            <line x1="100" y1="240" x2="100" y2="280" stroke="#ecf0f1" stroke-width="2"/>
+            <line x1="100" y1="240" x2="100" y2="280" stroke="#7f8c8d" stroke-width="2"/>
             
             <rect x="20" y="280" width="160" height="60" rx="10" fill="#9b59b6" stroke="#8e44ad" stroke-width="2"/>
             <text x="100" y="315" text-anchor="middle" fill="white" font-size="14" font-weight="bold">FCU</text>
             <text x="100" y="335" text-anchor="middle" fill="white" font-size="10">飞控单元</text>
             
             <circle cx="60" cy="310" r="8" fill="#e74c3c"/>
-            <text x="60" y="315" text-anchor="middle" fill="white" font-size="8">IMU</text>
+            <text x="60" y="313" text-anchor="middle" fill="white" font-size="7">IMU</text>
             <circle cx="140" cy="310" r="8" fill="#3498db"/>
-            <text x="140" y="315" text-anchor="middle" fill="white" font-size="8">GPS</text>
+            <text x="140" y="313" text-anchor="middle" fill="white" font-size="7">GPS</text>
         </svg>
         '''
         st.write(svg_html, unsafe_allow_html=True)
@@ -450,6 +521,8 @@ with tab4:
         st.write('✅ GCS ↔ OBC: 正常')
         st.write('✅ OBC ↔ FCU: 正常')
         st.write('📡 信号强度: -58 dBm')
+        st.write('📶 丢包率: 0.2%')
+        st.write('⚡ 延迟: 12ms')
     
     with col2:
         st.subheader('MAVLink 数据流')
@@ -457,11 +530,14 @@ with tab4:
         mavlink_container = st.container()
         
         with mavlink_container:
-            for msg in st.session_state.mavlink_messages[:20]:
-                color = '#27ae60' if msg['type'] == 'GPS' else '#3498db' if msg['type'] == 'ATTITUDE' else '#e67e22'
-                st.markdown(f"<span style='color:{color}'>[{msg['time']}] {msg['type']}:</span> {msg['content']}", unsafe_allow_html=True)
+            if not st.session_state.mavlink_messages:
+                st.write('暂无报文数据，启动飞行后将显示MAVLink数据流')
+            else:
+                for msg in st.session_state.mavlink_messages[:20]:
+                    color = '#27ae60' if msg['type'] == 'GPS' else '#3498db' if msg['type'] == 'ATTITUDE' else '#e67e22'
+                    st.markdown(f"<span style='color:{color}'>[{msg['time']}] **{msg['type']}**:</span> {msg['content']}", unsafe_allow_html=True)
 
 if st.session_state.is_flying:
     update_flight_data()
     time.sleep(0.1)
-    st.experimental_rerun()
+    st.rerun()
