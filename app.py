@@ -582,7 +582,7 @@ with tab3:
             if st.button('▶ 启动', disabled=st.session_state.is_flying, use_container_width=True):
                 st.session_state.is_flying = True
                 st.session_state.flight_data['status'] = '飞行中'
-                st.session_state.flight_data['path_index'] = 0
+                st.session_state.path_index = 0
                 add_log('▶ 飞行启动')
                 st.rerun()
         
