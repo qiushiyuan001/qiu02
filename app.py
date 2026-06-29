@@ -110,14 +110,14 @@ def generate_path_around(start, end, obstacles, fly_height=50, safe_radius=30):
 def init_session_state():
     if 'obstacles' not in st.session_state:
         st.session_state.obstacles = [
-            {'id': 1, 'name': '障碍物1', 'points': [(32.234411, 118.749028), (32.234711, 118.749028), (32.234711, 118.749328), (32.234411, 118.749328)], 'height': 30, 'color': '#e74c3c'},
-            {'id': 2, 'name': '障碍物2', 'points': [(32.233911, 118.749528), (32.234211, 118.749528), (32.234211, 118.749828), (32.233911, 118.749828)], 'height': 25, 'color': '#f39c12'},
-            {'id': 3, 'name': '障碍物3', 'points': [(32.233711, 118.748828), (32.234011, 118.748828), (32.234011, 118.749128), (32.233711, 118.749128)], 'height': 40, 'color': '#9b59b6'},
+            {'id': 1, 'name': '障碍物1', 'points': [(32.236479, 118.743786), (32.236779, 118.743786), (32.236779, 118.744086), (32.236479, 118.744086)], 'height': 30, 'color': '#e74c3c'},
+            {'id': 2, 'name': '障碍物2', 'points': [(32.235979, 118.744286), (32.236279, 118.744286), (32.236279, 118.744586), (32.235979, 118.744586)], 'height': 25, 'color': '#f39c12'},
+            {'id': 3, 'name': '障碍物3', 'points': [(32.235779, 118.743586), (32.236079, 118.743586), (32.236079, 118.743886), (32.235779, 118.743886)], 'height': 40, 'color': '#9b59b6'},
         ]
     if 'start_point' not in st.session_state:
-        st.session_state.start_point = {'lat': 32.234111, 'lng': 118.749428}
+        st.session_state.start_point = {'lat': 32.236179, 'lng': 118.744186}
     if 'end_point' not in st.session_state:
-        st.session_state.end_point = {'lat': 32.233411, 'lng': 118.750028}
+        st.session_state.end_point = {'lat': 32.235479, 'lng': 118.744786}
     if 'fly_height' not in st.session_state:
         st.session_state.fly_height = 50
     if 'safe_radius' not in st.session_state:
@@ -130,7 +130,7 @@ def init_session_state():
         st.session_state.flight_data = {
             'roll': 0.0, 'pitch': 0.0, 'yaw': 0.0,
             'alt': 0.0, 'speed': 0.0, 'dist': 0.0,
-            'lat': 32.234111, 'lng': 118.749428,
+            'lat': 32.236179, 'lng': 118.744186,
             'voltage': 24.0, 'current': 10.0, 'power': 100,
             'status': '待机'
         }
@@ -140,6 +140,8 @@ def init_session_state():
         st.session_state.mavlink_messages = []
     if 'path_type' not in st.session_state:
         st.session_state.path_type = '飞越'
+    if 'coord_input_mode' not in st.session_state:
+        st.session_state.coord_input_mode = 'WGS-84'
 
 init_session_state()
 
@@ -229,8 +231,8 @@ with tab1:
     with col2:
         st.subheader('坐标转换')
         
-        wgs_lng = st.number_input('WGS-84 经度', value=118.749428, step=0.0001, format='%.6f')
-        wgs_lat = st.number_input('WGS-84 纬度', value=32.234111, step=0.0001, format='%.6f')
+        wgs_lng = st.number_input('WGS-84 经度', value=118.744186, step=0.0001, format='%.6f')
+        wgs_lat = st.number_input('WGS-84 纬度', value=32.236179, step=0.0001, format='%.6f')
         
         gcj_lng, gcj_lat = wgs84_to_gcj02(wgs_lng, wgs_lat)
         bd_lng, bd_lat = wgs84_to_bd09(wgs_lng, wgs_lat)
@@ -275,13 +277,144 @@ with tab2:
         st.session_state.safe_radius = st.number_input('安全半径 (m)', value=30, min_value=5, max_value=100)
         st.session_state.path_type = st.radio('路径规划方式', ['飞越', '绕飞'])
         
-        st.subheader('起点/终点')
-        st.session_state.start_point['lat'] = st.number_input('起点纬度', value=32.234111, step=0.0001, format='%.6f')
-        st.session_state.start_point['lng'] = st.number_input('起点经度', value=118.749428, step=0.0001, format='%.6f')
-        st.session_state.end_point['lat'] = st.number_input('终点纬度', value=32.233411, step=0.0001, format='%.6f')
-        st.session_state.end_point['lng'] = st.number_input('终点经度', value=118.750028, step=0.0001, format='%.6f')
+        st.subheader('起点/终点设置')
         
-        if st.button('📐 生成路径'):
+        input_mode = st.radio('坐标输入模式', ['WGS-84 (GPS)', '高德GCJ-02'], horizontal=True, key='input_mode')
+        
+        start_lat = st.session_state.start_point['lat']
+        start_lng = st.session_state.start_point['lng']
+        end_lat = st.session_state.end_point['lat']
+        end_lng = st.session_state.end_point['lng']
+        
+        if input_mode == '高德GCJ-02':
+            start_lng_disp, start_lat_disp = wgs84_to_gcj02(start_lng, start_lat)
+            end_lng_disp, end_lat_disp = wgs84_to_gcj02(end_lng, end_lat)
+        else:
+            start_lat_disp, start_lng_disp = start_lat, start_lng
+            end_lat_disp, end_lng_disp = end_lat, end_lng
+        
+        st.write('**起点**')
+        col_s1, col_s2 = st.columns(2)
+        with col_s1:
+            new_s_lat = st.number_input('纬度', value=start_lat_disp, step=0.0001, format='%.6f', key='start_lat_input')
+        with col_s2:
+            new_s_lng = st.number_input('经度', value=start_lng_disp, step=0.0001, format='%.6f', key='start_lng_input')
+        
+        step_size = st.select_slider('微调步长', options=[1, 5, 10, 20, 50], value=5, format_func=lambda x: f'{x}米', key='step_size')
+        step_deg = step_size / 111000.0
+        
+        col_up, col_down = st.columns(2)
+        with col_up:
+            if st.button('⬆️ 北移', use_container_width=True, key='start_north'):
+                if input_mode == '高德GCJ-02':
+                    wgs_s_lng, wgs_s_lat = gcj02_to_wgs84(new_s_lng, new_s_lat)
+                else:
+                    wgs_s_lng, wgs_s_lat = new_s_lng, new_s_lat
+                st.session_state.start_point['lat'] = wgs_s_lat + step_deg
+                st.session_state.start_point['lng'] = wgs_s_lng
+                st.rerun()
+            if st.button('⬇️ 南移', use_container_width=True, key='start_south'):
+                if input_mode == '高德GCJ-02':
+                    wgs_s_lng, wgs_s_lat = gcj02_to_wgs84(new_s_lng, new_s_lat)
+                else:
+                    wgs_s_lng, wgs_s_lat = new_s_lng, new_s_lat
+                st.session_state.start_point['lat'] = wgs_s_lat - step_deg
+                st.session_state.start_point['lng'] = wgs_s_lng
+                st.rerun()
+        
+        with col_down:
+            if st.button('➡️ 东移', use_container_width=True, key='start_east'):
+                if input_mode == '高德GCJ-02':
+                    wgs_s_lng, wgs_s_lat = gcj02_to_wgs84(new_s_lng, new_s_lat)
+                else:
+                    wgs_s_lng, wgs_s_lat = new_s_lng, new_s_lat
+                lat_rad = math.radians(wgs_s_lat)
+                lng_step = step_deg / math.cos(lat_rad)
+                st.session_state.start_point['lat'] = wgs_s_lat
+                st.session_state.start_point['lng'] = wgs_s_lng + lng_step
+                st.rerun()
+            if st.button('⬅️ 西移', use_container_width=True, key='start_west'):
+                if input_mode == '高德GCJ-02':
+                    wgs_s_lng, wgs_s_lat = gcj02_to_wgs84(new_s_lng, new_s_lat)
+                else:
+                    wgs_s_lng, wgs_s_lat = new_s_lng, new_s_lat
+                lat_rad = math.radians(wgs_s_lat)
+                lng_step = step_deg / math.cos(lat_rad)
+                st.session_state.start_point['lat'] = wgs_s_lat
+                st.session_state.start_point['lng'] = wgs_s_lng - lng_step
+                st.rerun()
+        
+        if input_mode == '高德GCJ-02':
+            wgs_s_lng, wgs_s_lat = gcj02_to_wgs84(new_s_lng, new_s_lat)
+            st.session_state.start_point['lat'] = wgs_s_lat
+            st.session_state.start_point['lng'] = wgs_s_lng
+        else:
+            st.session_state.start_point['lat'] = new_s_lat
+            st.session_state.start_point['lng'] = new_s_lng
+        
+        st.write('**终点**')
+        col_e1, col_e2 = st.columns(2)
+        with col_e1:
+            new_e_lat = st.number_input('纬度', value=end_lat_disp, step=0.0001, format='%.6f', key='end_lat_input')
+        with col_e2:
+            new_e_lng = st.number_input('经度', value=end_lng_disp, step=0.0001, format='%.6f', key='end_lng_input')
+        
+        col_eu, col_ed = st.columns(2)
+        with col_eu:
+            if st.button('⬆️ 北移', use_container_width=True, key='end_north'):
+                if input_mode == '高德GCJ-02':
+                    wgs_e_lng, wgs_e_lat = gcj02_to_wgs84(new_e_lng, new_e_lat)
+                else:
+                    wgs_e_lng, wgs_e_lat = new_e_lng, new_e_lat
+                st.session_state.end_point['lat'] = wgs_e_lat + step_deg
+                st.session_state.end_point['lng'] = wgs_e_lng
+                st.rerun()
+            if st.button('⬇️ 南移', use_container_width=True, key='end_south'):
+                if input_mode == '高德GCJ-02':
+                    wgs_e_lng, wgs_e_lat = gcj02_to_wgs84(new_e_lng, new_e_lat)
+                else:
+                    wgs_e_lng, wgs_e_lat = new_e_lng, new_e_lat
+                st.session_state.end_point['lat'] = wgs_e_lat - step_deg
+                st.session_state.end_point['lng'] = wgs_e_lng
+                st.rerun()
+        
+        with col_ed:
+            if st.button('➡️ 东移', use_container_width=True, key='end_east'):
+                if input_mode == '高德GCJ-02':
+                    wgs_e_lng, wgs_e_lat = gcj02_to_wgs84(new_e_lng, new_e_lat)
+                else:
+                    wgs_e_lng, wgs_e_lat = new_e_lng, new_e_lat
+                lat_rad = math.radians(wgs_e_lat)
+                lng_step = step_deg / math.cos(lat_rad)
+                st.session_state.end_point['lat'] = wgs_e_lat
+                st.session_state.end_point['lng'] = wgs_e_lng + lng_step
+                st.rerun()
+            if st.button('⬅️ 西移', use_container_width=True, key='end_west'):
+                if input_mode == '高德GCJ-02':
+                    wgs_e_lng, wgs_e_lat = gcj02_to_wgs84(new_e_lng, new_e_lat)
+                else:
+                    wgs_e_lng, wgs_e_lat = new_e_lng, new_e_lat
+                lat_rad = math.radians(wgs_e_lat)
+                lng_step = step_deg / math.cos(lat_rad)
+                st.session_state.end_point['lat'] = wgs_e_lat
+                st.session_state.end_point['lng'] = wgs_e_lng - lng_step
+                st.rerun()
+        
+        if input_mode == '高德GCJ-02':
+            wgs_e_lng, wgs_e_lat = gcj02_to_wgs84(new_e_lng, new_e_lat)
+            st.session_state.end_point['lat'] = wgs_e_lat
+            st.session_state.end_point['lng'] = wgs_e_lng
+        else:
+            st.session_state.end_point['lat'] = new_e_lat
+            st.session_state.end_point['lng'] = new_e_lng
+        
+        dist_se = calculate_distance(
+            st.session_state.start_point['lat'], st.session_state.start_point['lng'],
+            st.session_state.end_point['lat'], st.session_state.end_point['lng']
+        )
+        st.info(f'📏 起点到终点距离: {dist_se:.1f} 米')
+        
+        if st.button('📐 生成路径', type='primary', use_container_width=True):
             if st.session_state.path_type == '飞越':
                 path, type_name = generate_path_overfly(
                     st.session_state.start_point,
