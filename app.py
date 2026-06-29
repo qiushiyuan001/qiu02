@@ -110,14 +110,14 @@ def generate_path_around(start, end, obstacles, fly_height=50, safe_radius=30):
 def init_session_state():
     if 'obstacles' not in st.session_state:
         st.session_state.obstacles = [
-            {'id': 1, 'name': '障碍物1', 'points': [(32.2345, 118.7490), (32.2348, 118.7490), (32.2348, 118.7493), (32.2345, 118.7493)], 'height': 30, 'color': '#e74c3c'},
-            {'id': 2, 'name': '障碍物2', 'points': [(32.2340, 118.7495), (32.2343, 118.7495), (32.2343, 118.7498), (32.2340, 118.7498)], 'height': 25, 'color': '#f39c12'},
-            {'id': 3, 'name': '障碍物3', 'points': [(32.2338, 118.7488), (32.2341, 118.7488), (32.2341, 118.7491), (32.2338, 118.7491)], 'height': 40, 'color': '#9b59b6'},
+            {'id': 1, 'name': '障碍物1', 'points': [(32.234411, 118.749028), (32.234711, 118.749028), (32.234711, 118.749328), (32.234411, 118.749328)], 'height': 30, 'color': '#e74c3c'},
+            {'id': 2, 'name': '障碍物2', 'points': [(32.233911, 118.749528), (32.234211, 118.749528), (32.234211, 118.749828), (32.233911, 118.749828)], 'height': 25, 'color': '#f39c12'},
+            {'id': 3, 'name': '障碍物3', 'points': [(32.233711, 118.748828), (32.234011, 118.748828), (32.234011, 118.749128), (32.233711, 118.749128)], 'height': 40, 'color': '#9b59b6'},
         ]
     if 'start_point' not in st.session_state:
-        st.session_state.start_point = {'lat': 32.2342, 'lng': 118.7494}
+        st.session_state.start_point = {'lat': 32.234111, 'lng': 118.749428}
     if 'end_point' not in st.session_state:
-        st.session_state.end_point = {'lat': 32.2335, 'lng': 118.7500}
+        st.session_state.end_point = {'lat': 32.233411, 'lng': 118.750028}
     if 'fly_height' not in st.session_state:
         st.session_state.fly_height = 50
     if 'safe_radius' not in st.session_state:
@@ -130,7 +130,7 @@ def init_session_state():
         st.session_state.flight_data = {
             'roll': 0.0, 'pitch': 0.0, 'yaw': 0.0,
             'alt': 0.0, 'speed': 0.0, 'dist': 0.0,
-            'lat': 32.2342, 'lng': 118.7494,
+            'lat': 32.234111, 'lng': 118.749428,
             'voltage': 24.0, 'current': 10.0, 'power': 100,
             'status': '待机'
         }
@@ -229,8 +229,8 @@ with tab1:
     with col2:
         st.subheader('坐标转换')
         
-        wgs_lng = st.number_input('WGS-84 经度', value=118.7494, step=0.0001, format='%.6f')
-        wgs_lat = st.number_input('WGS-84 纬度', value=32.2342, step=0.0001, format='%.6f')
+        wgs_lng = st.number_input('WGS-84 经度', value=118.749428, step=0.0001, format='%.6f')
+        wgs_lat = st.number_input('WGS-84 纬度', value=32.234111, step=0.0001, format='%.6f')
         
         gcj_lng, gcj_lat = wgs84_to_gcj02(wgs_lng, wgs_lat)
         bd_lng, bd_lat = wgs84_to_bd09(wgs_lng, wgs_lat)
@@ -249,6 +249,7 @@ with tab1:
         
         st.subheader('地图信息')
         st.write(f'南京科技职业学院')
+        st.write(f'校园正门（高德GCJ-02）')
         st.write(f'经度: 118°44′58″ E')
         st.write(f'纬度: 32°14′03″ N')
         st.write(f'坐标系: WGS-84')
@@ -275,10 +276,10 @@ with tab2:
         st.session_state.path_type = st.radio('路径规划方式', ['飞越', '绕飞'])
         
         st.subheader('起点/终点')
-        st.session_state.start_point['lat'] = st.number_input('起点纬度', value=32.2342, step=0.0001, format='%.6f')
-        st.session_state.start_point['lng'] = st.number_input('起点经度', value=118.7494, step=0.0001, format='%.6f')
-        st.session_state.end_point['lat'] = st.number_input('终点纬度', value=32.2335, step=0.0001, format='%.6f')
-        st.session_state.end_point['lng'] = st.number_input('终点经度', value=118.7500, step=0.0001, format='%.6f')
+        st.session_state.start_point['lat'] = st.number_input('起点纬度', value=32.234111, step=0.0001, format='%.6f')
+        st.session_state.start_point['lng'] = st.number_input('起点经度', value=118.749428, step=0.0001, format='%.6f')
+        st.session_state.end_point['lat'] = st.number_input('终点纬度', value=32.233411, step=0.0001, format='%.6f')
+        st.session_state.end_point['lng'] = st.number_input('终点经度', value=118.750028, step=0.0001, format='%.6f')
         
         if st.button('📐 生成路径'):
             if st.session_state.path_type == '飞越':
